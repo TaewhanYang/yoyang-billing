@@ -1,2 +1,2 @@
 
-<code truncated for brevity>
+<코드는 동일하며 생략>
