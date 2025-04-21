@@ -6,7 +6,6 @@ from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
-import os
 
 st.set_page_config(page_title="요양원 청구 마법사", layout="wide")
 
@@ -39,13 +38,6 @@ if uploaded_raw and uploaded_base:
         st.error("⚠️ 필요한 컬럼이 누락되어 병합할 수 없습니다. '고객이름+주민등록번호' 및 '요양원명' 컬럼이 필요합니다.")
         st.stop()
 
-    st.subheader("👀 업로드한 데이터 미리보기")
-    st.write("🔹 조제데이터 원본:")
-    st.dataframe(raw_df.head(10), use_container_width=True)
-
-    st.write("🔹 요양원기본테이블:")
-    st.dataframe(base_df.head(10), use_container_width=True)
-
     merged_df = pd.merge(
         raw_df,
         base_df[["고객이름+주민등록번호", "요양원명"]],
@@ -53,13 +45,14 @@ if uploaded_raw and uploaded_base:
         how="left",
         suffixes=("", "_기본")
     )
-    merged_df["요양원명"] = merged_df["요양원명"].fillna(merged_df["요양원명_기본"])
-    merged_df = merged_df.drop(columns=["요양원명_기본"])
 
-    st.write("✅ 요양원 자동입력 결과:")
+    if "요양원명_기본" in merged_df.columns:
+        merged_df["요양원명"] = merged_df["요양원명"].fillna(merged_df["요양원명_기본"])
+        merged_df = merged_df.drop(columns=["요양원명_기본"])
+
+    st.subheader("👀 업로드한 데이터 미리보기")
     st.dataframe(merged_df.head(10), use_container_width=True)
 
-    # 전체 리스트 다운로드
     full_output = BytesIO()
     merged_df.to_excel(full_output, index=False)
     st.download_button(
