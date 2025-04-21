@@ -49,6 +49,9 @@ if uploaded_raw and uploaded_base:
     if "요양원명_기본" in merged_df.columns:
         merged_df["요양원명"] = merged_df["요양원명"].fillna(merged_df["요양원명_기본"])
         merged_df = merged_df.drop(columns=["요양원명_기본"])
+    elif "요양원명" not in merged_df.columns:
+        st.error("요양원명 컬럼이 병합 결과에 없습니다. 요양원 기본 테이블이 잘못되었을 수 있습니다.")
+        st.stop()
 
     st.subheader("👀 업로드한 데이터 미리보기")
     st.dataframe(merged_df.head(10), use_container_width=True)
