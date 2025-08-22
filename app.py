@@ -4,49 +4,84 @@ import io
 from datetime import datetime
 
 st.set_page_config(page_title="요양원 청구서 자동화", layout="wide")
-
 st.title("💊 요양원 청구서 자동화 시스템")
 
 # 1. 파일 업로드
 col1, col2 = st.columns(2)
 with col1:
-    file_info = st.file_uploader("요양원기본테이블.xlsx", type="xlsx", key="info")
+    file_info = st.file_uploader("📁 요양원기본테이블.xlsx", type="xlsx", key="info")
 with col2:
-    file_data = st.file_uploader("처방데이터.xlsx", type="xlsx", key="data")
+    file_data = st.file_uploader("📁 처방데이터.xlsx", type="xlsx", key="data")
 
-# 2. 처리 시작
 if file_info and file_data:
     info_df = pd.read_excel(file_info)
     data_df = pd.read_excel(file_data)
 
-    # 주민번호 앞6자리 추출
-    data_df["주민번호앞6"] = data_df["주민등록번호"].astype(str).str[:6]
-    info_df["주민번호앞6"] = info_df["주민등록번호"].astype(str).str[:6]
+    # 매칭키 생성: 고객이름 + 주민등록번호 앞 6자리
+    data_df["고객이름"] = data_df["고객이름"].astype(str).str.strip()
+    data_df["주민등록번호"] = data_df["주민등록번호"].astype(str)
+    data_df["매칭키"] = data_df["고객이름"] + data_df["주민등록번호"].str[:6]
 
-    # 요양원명 병합
-    merged = pd.merge(data_df, info_df[["고객이름", "주민번호앞6", "요양원명"]], 
-                      left_on=["고객이름", "주민번호앞6"],
-                      right_on=["고객이름", "주민번호앞6"],
-                      how="left")
+    info_df["고객이름"] = info_df["고객이름"].astype(str).str.strip()
+    info_df["주민등록번호"] = info_df["주민등록번호"].astype(str)
+    info_df["매칭키"] = info_df["고객이름"] + info_df["주민등록번호"].str[:6]
 
-    # 매칭되지 않은 행
-    unmatched = merged[merged["요양원명"].isna()]
+    # 병합
+    merged = pd.merge(data_df, info_df[["매칭키", "요양원명"]], on="매칭키", how="left")
+
+    # 매칭되지 않은 환자 처리
+    unmatched = merged[merged["요양원명"].isna()].copy()
+
     if not unmatched.empty:
-        st.warning("❗ 매칭되지 않은 환자가 있습니다. 수기로 요양원을 입력하세요.")
-        for i, row in unmatched.iterrows():
-            manual = st.text_input(f"{row['고객이름']} ({row['주민등록번호']}) 요양원명 입력", key=i)
-            if manual:
-                merged.at[i, "요양원명"] = manual
+        st.warning(f"⚠️ 매칭되지 않은 환자가 {len(unmatched)}명 있습니다.")
 
-    # 매칭 완료 후 처리
+        # 수기입력 여부 확인
+        do_manual = st.radio("수기로 요양원명을 입력하시겠습니까?", ["아니요", "예"], index=0)
+
+        if do_manual == "예":
+            new_entries = []
+            st.markdown("### ✏️ 수기 요양원 입력")
+
+            for idx, row in unmatched.iterrows():
+                col1, col2 = st.columns([2, 3])
+                with col1:
+                    st.text(row["고객이름"] + " / " + row["주민등록번호"])
+                with col2:
+                    val = st.text_input("요양원명 입력", key=f"manual_{idx}")
+                    if val:
+                        merged.at[idx, "요양원명"] = val
+                        new_entries.append({
+                            "고객이름": row["고객이름"],
+                            "주민등록번호": row["주민등록번호"],
+                            "요양원명": val
+                        })
+
+            # 수기로 입력된 데이터 엑셀로 다운로드
+            if new_entries:
+                new_df = pd.DataFrame(new_entries)
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    new_df.to_excel(writer, index=False)
+
+                date_str = datetime.now().strftime("%Y%m%d")
+                st.download_button(
+                    label="💾 신규 요양원 테이블 다운로드",
+                    data=buffer.getvalue(),
+                    file_name=f"신규요양원등록_{date_str}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        else:
+            st.stop()
+
+    # 모든 매칭이 완료된 경우만 처리
     if merged["요양원명"].isna().sum() == 0:
+        st.success("✅ 모든 환자가 요양원과 성공적으로 매칭되었습니다.")
+
         요양원목록 = merged["요양원명"].unique()
-        선택된요양원 = st.selectbox("요양원 선택", 요양원목록)
-        보기형식 = st.radio("형식 선택", ["기본형", "피벗형"])
+        선택된요양원 = st.selectbox("📌 요양원 선택", 요양원목록)
+        보기형식 = st.radio("📄 보기 형식", ["기본형", "피벗형"])
 
         target = merged[merged["요양원명"] == 선택된요양원].copy()
-
-        # 날짜 열 처리
         target["일자"] = pd.to_datetime(target["내방일"], errors="coerce").dt.day
 
         if 보기형식 == "기본형":
@@ -60,7 +95,7 @@ if file_info and file_data:
             pivot["합계"] = pivot.sum(axis=1)
             st.dataframe(pivot)
 
-        # 다운로드
+        # Excel 다운로드
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             if 보기형식 == "기본형":
