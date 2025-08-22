@@ -74,10 +74,16 @@ if file_info and file_data:
     if merged["요양원명"].isna().sum() == 0:
         st.success("✅ 모든 환자가 요양원과 성공적으로 매칭되었습니다.")
 
-        # 불필요한 열 제거
-        drop_cols = [col for col in merged.columns if col.lower().startswith("unnamed") or col in ["보험", "매칭키", "요양원명", "일자"]]
-        merged.drop(columns=drop_cols, inplace=True, errors="ignore")
+# ✅ 1. 요양원명 먼저 사용하고
+요양원목록 = merged["요양원명"].unique()
+선택된요양원 = st.selectbox("📌 요양원 선택", 요양원목록)
+보기형식 = st.radio("📄 보기 형식", ["기본형", "피벗형"])
 
+# ✅ 2. 그다음 삭제해야 함
+drop_cols = [col for col in merged.columns if col.lower().startswith("unnamed") or col in ["보험", "매칭키", "요양원명", "일자"]]
+merged.drop(columns=drop_cols, inplace=True, errors="ignore")
+
+        
         # 내방일 포맷 변경 → "6월2일"
         merged["날짜"] = pd.to_datetime(merged["내방일"], errors="coerce").dt.strftime("%m월%-d일")
 
